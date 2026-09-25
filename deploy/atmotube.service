@@ -1,0 +1,55 @@
+[Unit]
+Description=Atmotube PRO -> Prometheus (node_exporter textfile collector)
+Documentation=https://github.com/DanielEnki420/atmotube-prometheus
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=atmotube
+Group=atmotube
+# BlueZ is reached over the D-Bus system bus; Debian's D-Bus policy lets the
+# bluetooth group talk to it.
+SupplementaryGroups=bluetooth
+EnvironmentFile=-/etc/atmotube.env
+ExecStart=/usr/bin/python3 /opt/atmotube-prometheus/atmotube.py
+# Without Bluetooth the exporter does NOT exit - it retries every minute and
+# reports atmotube_bluetooth_up 0. on-failure therefore only catches real crashes.
+Restart=on-failure
+RestartSec=30
+
+# ── Hardening ───────────────────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+# The textfile directory must be writable. Without this line the write fails,
+# the OLD file stays behind, and node_exporter keeps serving it without any
+# error - flat, plausible-looking lines. The "-": a missing directory does not
+# stop the service from starting. Add yours if it is somewhere else.
+ReadWritePaths=-/var/lib/prometheus/node-exporter -/var/lib/node_exporter
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+# No AF_BLUETOOTH needed: BlueZ does the radio, the exporter only talks D-Bus
+# (AF_UNIX). AF_INET/AF_INET6 are for a notify command that uses the network.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# UMask 0077 would make the metrics file 0600; atmotube.py sets 0644 itself.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

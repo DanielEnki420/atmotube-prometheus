@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.env
+!deploy/atmotube.env.example
+build/
+dist/
+*.egg-info/

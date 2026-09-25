@@ -1,0 +1,14 @@
+atmotube-prometheus
+Copyright (c) 2026 Daniel Enki - MIT License, see LICENSE.
+
+Test fixtures in tests/test_atmotube.py (raw advertisement capture, status and
+GATT PM payloads) come from natekspencer/ha-atmo
+(https://github.com/natekspencer/ha-atmo), MIT License,
+Copyright (c) 2023 Nathan Spencer.
+
+The advertisement packet layout follows Atmotube's own library
+atmotube/atmotube-android-ble (https://github.com/atmotube/atmotube-android-ble),
+Apache License 2.0. No code from it is included.
+
+Atmotube is a trademark of Atmotube, Inc. This project is not affiliated with,
+endorsed by or sponsored by Atmotube, Inc.

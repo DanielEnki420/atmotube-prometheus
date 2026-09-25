@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "atmotube-prometheus"
+version = "0.1.0"
+description = "Atmotube PRO air sensor to Prometheus over Bluetooth LE (node_exporter textfile collector), with threshold alerts"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Daniel Enki"}]
+requires-python = ">=3.9"
+dependencies = ["bleak>=0.19"]
+keywords = ["atmotube", "air-quality", "bluetooth-le", "prometheus", "grafana", "raspberry-pi"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "https://github.com/DanielEnki420/atmotube-prometheus"
+
+[project.scripts]
+atmotube-prometheus = "atmotube:main"
+
+[tool.setuptools]
+py-modules = ["atmotube"]

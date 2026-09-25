@@ -1,0 +1,33 @@
+# Prometheus alerting rules for atmotube-prometheus.
+#
+# These watch the MEASUREMENT CHAIN, not the air. Bad air is handled by the
+# exporter's own alerts (ATMOTUBE_NOTIFY_CMD) - it is not an outage of your
+# monitoring and shouldn't page like one.
+groups:
+  - name: atmotube
+    interval: 60s
+    rules:
+      - alert: AtmotubeExporterStalled
+        # The heartbeat is written every round (30 s). If it stops, the
+        # exporter isn't running - and its last file stays behind, looking
+        # perfectly healthy to node_exporter.
+        expr: time() - atmotube_last_run_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "atmotube exporter has not written for over 5 minutes"
+          description: "systemctl status atmotube; journalctl -u atmotube -n 30. If you stopped it on purpose, delete the .prom file - otherwise this rule is right to fire."
+
+      - alert: AtmotubeNoReadings
+        # The exporter runs but gets no readings: battery empty, Bluetooth off,
+        # device moved away - or the phone app holds a connection, during which
+        # the Atmotube stops advertising. Counted from the exporter start, so
+        # "never heard anything" fires too.
+        expr: time() - atmotube_last_reading_timestamp_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No readings from the Atmotube for 30 minutes"
+          description: "atmotube_bluetooth_up and atmotube_device_seen show where it breaks. More detail: python3 atmotube.py --diagnose"
