@@ -5,6 +5,10 @@ Reads an **Atmotube PRO** air sensor over Bluetooth LE and hands its readings to
 temperature, humidity, pressure, battery — plus threshold alerts to any command
 you like. One Python file, no cloud, no Home Assistant required.
 
+![The bundled Grafana dashboard over 24 hours: air quality, particulate matter, VOC, climate, battery, signal, data path and alerts](docs/dashboard.png)
+
+<sub>The bundled dashboard (`grafana/atmotube-dashboard.json`) after a day in a living room on a Raspberry Pi 5.</sub>
+
 ---
 
 ## Why this exists
