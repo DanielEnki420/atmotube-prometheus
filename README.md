@@ -1,5 +1,9 @@
 # atmotube-prometheus
 
+[![tests](https://github.com/DanielEnki420/atmotube-prometheus/actions/workflows/tests.yml/badge.svg)](https://github.com/DanielEnki420/atmotube-prometheus/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.9–3.13](https://img.shields.io/badge/python-3.9%E2%80%933.13-blue.svg)](pyproject.toml)
+
 Reads an **Atmotube PRO** air sensor over Bluetooth LE and hands its readings to
 **Prometheus** through node_exporter's textfile collector — PM1/PM2.5/PM10, VOC,
 temperature, humidity, pressure, battery — plus threshold alerts to any command
