@@ -7,11 +7,12 @@
 Reads an **Atmotube PRO** air sensor over Bluetooth LE and hands its readings to
 **Prometheus** through node_exporter's textfile collector — PM1/PM2.5/PM10, VOC,
 temperature, humidity, pressure, battery — plus threshold alerts to any command
-you like. One Python file, no cloud, no Home Assistant required.
+you like. One Python file, no cloud, no Home Assistant required. Dashboards for
+**Perses** and **Grafana** are included.
 
 ![The bundled Grafana dashboard over 24 hours: air quality, particulate matter, VOC, climate, battery, signal, data path and alerts](docs/dashboard.png)
 
-<sub>The bundled dashboard (`grafana/atmotube-dashboard.json`) after a day in a living room on a Raspberry Pi 5.</sub>
+<sub>The bundled Grafana dashboard (`grafana/atmotube-dashboard.json`) after a day in a living room on a Raspberry Pi 5. The Perses dashboard (`perses/`) has the same panels.</sub>
 
 ---
 
@@ -42,7 +43,7 @@ which case you're in.
   gaps, so graphs don't jump between two sources.
 - **No made-up values.** A reading older than its maximum age (10 min, 30 min
   for PM — the sensor measures at intervals) is **left out** of the file, not
-  repeated. A gap in Grafana is honest. A flat line holding the last value looks
+  repeated. A gap in the graph is honest. A flat line holding the last value looks
   exactly like clean air.
 - **Implausible data is dropped.** `0xFFFF` is the manufacturer ID "for
   testing" and other devices use it too. Only the name `ATMOTUBE` or the
@@ -162,15 +163,23 @@ Pin the address. Without `ATMOTUBE_MAC` the exporter takes the first Atmotube
 it hears — possibly your neighbour's — and says so in the log.
 
 Then add `prometheus/atmotube-rules.yml` to your Prometheus `rule_files` and
-import `grafana/atmotube-dashboard.json` into Grafana (it asks for your
-Prometheus data source).
+pick a dashboard:
+
+- **Perses:** `percli apply -d perses/` (after `percli login`) creates the
+  project `atmotube` and the dashboard in it. For file provisioning, copy both
+  files into your provisioning folder instead. The dashboard names no data
+  source of its own, so it uses your default Prometheus data source.
+- **Grafana:** import `grafana/atmotube-dashboard.json` (it asks for your
+  Prometheus data source).
+
+Both ask Prometheus exactly the same queries; a test keeps it that way.
 
 ### About the hardening
 
 The unit runs under a strict systemd sandbox. One line in it matters more than
 the rest: `ReadWritePaths=` for the textfile directory. `ProtectSystem=strict`
 makes `/var` read-only, and a write that fails there doesn't make anything go
-red: the old `.prom` file stays, node_exporter keeps serving it, and Grafana
+red: the old `.prom` file stays, node_exporter keeps serving it, and the dashboard
 draws flat, perfectly plausible lines. I found exactly that on the same box,
 with a different exporter, fifteen days after hardening it. If your textfile
 directory lives elsewhere, add it there. `AtmotubeExporterStalled` catches it
@@ -225,6 +234,9 @@ tests run on **real captures** from [ha-atmo](https://github.com/natekspencer/ha
 not on bytes I made up: a hand-built packet only proves that the parser and the
 test share the same misunderstanding. The notify tests include one that passes
 `; touch x` and `$(id)` through and checks that nothing gets executed.
+`tests/test_dashboards.py` checks that both dashboards ask the same queries,
+that every metric they use is one the exporter writes, and that the Perses
+layout points only at panels that exist.
 
 ## Limitations
 

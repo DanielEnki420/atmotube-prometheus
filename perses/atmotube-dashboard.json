@@ -1,0 +1,691 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "atmotube",
+    "project": "atmotube"
+  },
+  "spec": {
+    "display": {
+      "name": "Atmotube — Air quality"
+    },
+    "duration": "24h",
+    "variables": [],
+    "panels": {
+      "airQuality": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Air quality"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_air_quality_score"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "pm25": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "PM2.5 (µg/m³)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_pm_ugm3{size=\"PM2.5\"}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "voc": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "VOC (ppm)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 2
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_voc_ppb / 1000"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "temperature": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Temperature (°C)"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 1
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_temperature_celsius"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "humidity": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Humidity"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "percent",
+                "decimalPlaces": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_humidity_percent"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "lastReading": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Last reading"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last",
+              "format": {
+                "unit": "seconds",
+                "decimalPlaces": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "time() - atmotube_last_reading_timestamp_seconds"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "pmHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Particulate matter (µg/m³)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_pm_ugm3",
+                    "seriesNameFormat": "{{size}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "vocHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "VOC (ppm)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 2
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_voc_ppb / 1000",
+                    "seriesNameFormat": "VOC"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "temperatureHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Temperature (°C)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 1
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_temperature_celsius",
+                    "seriesNameFormat": "Temperature"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "humidityHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Humidity"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "percent"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_humidity_percent",
+                    "seriesNameFormat": "Humidity"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "pressureHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Pressure (hPa)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_pressure_hpa",
+                    "seriesNameFormat": "Pressure"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "batteryHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Battery"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "percent"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_battery_percent",
+                    "seriesNameFormat": "Battery"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "signalHistory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Signal (dBm)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_rssi_dbm",
+                    "seriesNameFormat": "Signal"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dataPath": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Data path"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (type) (increase(atmotube_advertisements_total{type=~\"base|pm|combined\"}[5m]))",
+                    "seriesNameFormat": "advertisement: {{type}}"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (result) (increase(atmotube_gatt_reads_total[15m]))",
+                    "seriesNameFormat": "GATT: {{result}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "alerts": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Alerts (1 = active)"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "atmotube_alert_active",
+                    "seriesNameFormat": "{{kind}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Overview"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/airQuality"
+              }
+            },
+            {
+              "x": 4,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/pm25"
+              }
+            },
+            {
+              "x": 8,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/voc"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/temperature"
+              }
+            },
+            {
+              "x": 16,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/humidity"
+              }
+            },
+            {
+              "x": 20,
+              "y": 0,
+              "width": 4,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/lastReading"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "History"
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/pmHistory"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/vocHistory"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/temperatureHistory"
+              }
+            },
+            {
+              "x": 12,
+              "y": 7,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/humidityHistory"
+              }
+            },
+            {
+              "x": 0,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/pressureHistory"
+              }
+            },
+            {
+              "x": 12,
+              "y": 14,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/batteryHistory"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/signalHistory"
+              }
+            },
+            {
+              "x": 12,
+              "y": 21,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/dataPath"
+              }
+            },
+            {
+              "x": 0,
+              "y": 28,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/alerts"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

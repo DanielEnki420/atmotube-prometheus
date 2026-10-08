@@ -11,7 +11,7 @@ license = {text = "MIT"}
 authors = [{name = "Daniel Enki"}]
 requires-python = ">=3.9"
 dependencies = ["bleak>=0.19"]
-keywords = ["atmotube", "air-quality", "bluetooth-le", "prometheus", "grafana", "raspberry-pi"]
+keywords = ["atmotube", "air-quality", "bluetooth-le", "prometheus", "perses", "grafana", "raspberry-pi"]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: POSIX :: Linux",

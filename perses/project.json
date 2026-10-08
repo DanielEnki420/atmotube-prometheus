@@ -1,0 +1,11 @@
+{
+  "kind": "Project",
+  "metadata": {
+    "name": "atmotube"
+  },
+  "spec": {
+    "display": {
+      "name": "Atmotube"
+    }
+  }
+}
