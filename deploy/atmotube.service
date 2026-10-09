@@ -22,12 +22,18 @@ RestartSec=30
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=read-only
+# Code in /opt, config in /etc, the user has no home: nothing under /home is
+# needed, so it's hidden entirely.
+ProtectHome=yes
 # The textfile directory must be writable. Without this line the write fails,
 # the OLD file stays behind, and node_exporter keeps serving it without any
 # error - flat, plausible-looking lines. The "-": a missing directory does not
 # stop the service from starting. Add yours if it is somewhere else.
 ReadWritePaths=-/var/lib/prometheus/node-exporter -/var/lib/node_exporter
+# No device access needed: BlueZ does the radio, the exporter talks D-Bus.
+PrivateDevices=yes
+# Runs at about 30 MB; the limit catches a leak before it hurts the machine.
+MemoryMax=128M
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

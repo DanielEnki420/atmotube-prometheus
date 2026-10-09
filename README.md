@@ -253,6 +253,10 @@ because a rule that never fires passes "stays quiet" just as well. CI also runs
 
 ## Limitations
 
+- **The readings are not authenticated.** The Atmotube broadcasts them in the
+  clear, and a Bluetooth address is easy to fake. Anyone within radio range
+  could send made-up values, even with `ATMOTUBE_MAC` pinned. Treat the alerts
+  as a hint about your air, not as a safety system.
 - **Atmotube PRO only.** The PRO 2 uses a different protocol; `--diagnose`
   detects it and says so, the exporter ignores it.
 - **Temperature from advertisements is whole degrees.** GATT reads give

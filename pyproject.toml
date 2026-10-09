@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atmotube-prometheus"
-version = "0.1.1"
+version = "0.1.2"
 description = "Atmotube PRO air sensor to Prometheus over Bluetooth LE (node_exporter textfile collector), with threshold alerts"
 readme = "README.md"
 license = {text = "MIT"}

@@ -50,9 +50,10 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -134,6 +135,10 @@ CHAR_PM = "db450005-8e9a-4818-add7-6ed94a328ab4"
 CHAR_NAMES = {CHAR_BME280: "BME280", CHAR_STATUS: "Status", CHAR_PM: "PM", CHAR_VOC: "VOC"}
 
 BASE_FIELDS = ("voc_ppb", "temperature", "humidity", "pressure_hpa", "status", "battery")
+# Other Atmotubes are remembered only to log each one once. Anyone in radio
+# range can make up addresses with the name ATMOTUBE - without a cap that set
+# and the log would grow for as long as they keep at it.
+MAX_OTHERS = 50
 PM_FIELDS = ("pm1", "pm25", "pm10")
 
 
@@ -352,9 +357,13 @@ def on_advertisement(s, address, name, uuids, manufacturer_data, rssi, now, devi
         s.address = address
         log.info("Atmotube found: %s (signal %s dBm)", address, rssi)
     elif address != s.address:
-        if address not in s.others:
+        if address not in s.others and len(s.others) < MAX_OTHERS:
             s.others.add(address)
-            log.info("Ignoring another Atmotube %s (listening to %s)", address, s.address)
+            if len(s.others) < MAX_OTHERS:
+                log.info("Ignoring another Atmotube %s (listening to %s)", address, s.address)
+            else:
+                log.warning("%d other Atmotubes heard - not logging any more of them. "
+                            "Pin your device with ATMOTUBE_MAC.", MAX_OTHERS)
         return "other-atmotube"
 
     s.device = device or s.device
@@ -670,15 +679,26 @@ def write_metrics(text, path=None):
     hardening sets UMask=0077, and node_exporter usually runs as another user."""
     global _last_write_error
     path = path or METRICS_FILE
-    tmp = path + ".tmp"
+    # A fresh, randomly named file (O_EXCL) instead of a fixed "<name>.tmp":
+    # the textfile directory is shared with other writers, and a fixed name
+    # would follow a symlink someone left there. Not ending in .prom, so
+    # node_exporter ignores it until the rename.
+    tmp = None
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".",
+                                   prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
             os.fchmod(f.fileno(), 0o644)
         os.replace(tmp, path)
         _last_write_error = None
         return True
     except OSError as e:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
         if str(e) != _last_write_error:
             log.error("Cannot write metrics (%s): %s", path, e)
             _last_write_error = str(e)
@@ -798,6 +818,14 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
 
 
 # ── Diagnose ────────────────────────────────────────────────────────────────
+def printable(text, limit=40):
+    """Device names come from the radio - anyone nearby chooses them. Printed
+    raw, escape sequences in a name could rewrite the terminal (fake a ✓ line,
+    retitle the window). Only printable characters go out, and not too many."""
+    text = "".join(c if c.isprintable() else "?" for c in str(text or ""))
+    return text[:limit] + ("…" if len(text) > limit else "")
+
+
 def describe(v):
     parts = []
     if v.get("temperature") is not None:
@@ -847,7 +875,7 @@ async def diagnose(seconds, scanner_cls=None, client_cls=None):
         kind, base, pm = decode_manufacturer_data(data)
         f["kinds"][h] = kind
         f["base"] = base or f["base"]
-        print(f"  {device.address}  {(name or '?'):10} {adv.rssi:>4} dBm  "
+        print(f"  {printable(device.address, 20)}  {printable(name or '?'):10} {adv.rssi:>4} dBm  "
               f"{len(data):2} bytes  {kind:11} {h}")
         for part in (base, pm):
             if part:

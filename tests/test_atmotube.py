@@ -166,6 +166,23 @@ class Reception(unittest.TestCase):
         self.assertEqual(self.receive(s, BASE_2, address="00:00:00:00:00:01"), "other-atmotube")
         self.assertEqual(s.value("humidity", 1000.0), 18)
 
+    def test_made_up_addresses_do_not_grow_memory(self):
+        # Someone in radio range sends the name ATMOTUBE from ever new addresses.
+        s = new_state()
+        self.receive(s, BASE_1)
+        atmo.log.disabled = False                      # switched off for all other tests
+        try:
+            with self.assertLogs(atmo.log, "INFO") as logs:
+                for i in range(1000):
+                    addr = "02:00:00:00:%02X:%02X" % (i // 256, i % 256)
+                    self.assertEqual(self.receive(s, BASE_2, address=addr), "other-atmotube")
+        finally:
+            atmo.log.disabled = True
+        self.assertEqual(len(s.others), atmo.MAX_OTHERS)
+        self.assertEqual(len(logs.records), atmo.MAX_OTHERS)
+        self.assertIn("not logging any more", logs.records[-1].getMessage())
+        self.assertEqual(s.value("humidity", 1000.0), 18)   # still listening to the first one
+
     def test_pro2_detected_not_read(self):
         s = new_state()
         self.assertEqual(self.receive(s, BASE_1, uuids=[atmo.SERVICE_PRO2]), "pro2")
@@ -415,6 +432,21 @@ class Metrics(unittest.TestCase):
         finally:
             os.umask(old)
 
+    def test_write_does_not_follow_a_planted_symlink(self):
+        # The old fixed name "<file>.tmp" would have been opened through the link.
+        with tempfile.TemporaryDirectory() as d:
+            victim = os.path.join(d, "victim")
+            with open(victim, "w") as f:
+                f.write("untouched")
+            path = os.path.join(d, "atmotube.prom")
+            os.symlink(victim, path + ".tmp")
+            self.assertTrue(atmo.write_metrics("x 1\n", path))
+            with open(victim) as f:
+                self.assertEqual(f.read(), "untouched")
+            with open(path) as f:
+                self.assertEqual(f.read(), "x 1\n")
+            self.assertEqual(sorted(os.listdir(d)), ["atmotube.prom", "atmotube.prom.tmp", "victim"])
+
 
 # ── The whole exporter, with stubs instead of radio ─────────────────────────
 def stub_scanner(packets, error=None):
@@ -516,6 +548,16 @@ class Exporter(unittest.TestCase):
                                 {atmo.CHAR_VOC: (262).to_bytes(2, "little") + b"\x00\x00"})
         self.assertIn("✓ Base readings", out)
         self.assertIn("VOC cross-check: advertisement 259 ppb, GATT 262 ppb", out)
+
+    def test_diagnose_prints_radio_names_harmlessly(self):
+        # Names are chosen by whoever transmits. An escape sequence must not
+        # reach the terminal.
+        evil = "ATMO\x1b[2J\x1b]0;owned\x07\n  ✓ fake"
+        rc, out = self.diagnose([("AA:BB:CC:DD:EE:FF", evil, PM_1)], {})
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+        self.assertNotIn("\n  ✓ fake", out)
+        self.assertIn("ATMO?[2J", out)
 
     def test_diagnose_without_atmotube(self):
         rc, out = self.diagnose([], {})
