@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/DanielEnki420/atmotube-prometheus/actions/workflows/tests.yml/badge.svg)](https://github.com/DanielEnki420/atmotube-prometheus/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python 3.9–3.13](https://img.shields.io/badge/python-3.9%E2%80%933.13-blue.svg)](pyproject.toml)
+[![Python 3.9–3.14](https://img.shields.io/badge/python-3.9%E2%80%933.14-blue.svg)](pyproject.toml)
 
 Reads an **Atmotube PRO** air sensor over Bluetooth LE and hands its readings to
 **Prometheus** through node_exporter's textfile collector — PM1/PM2.5/PM10, VOC,
@@ -237,6 +237,16 @@ test share the same misunderstanding. The notify tests include one that passes
 `tests/test_dashboards.py` checks that both dashboards ask the same queries,
 that every metric they use is one the exporter writes, and that the Perses
 layout points only at panels that exist.
+
+The alert rules have their own tests, run with Prometheus' `promtool`:
+
+```bash
+promtool test rules tests/atmotube-rules.test.yml
+```
+
+Each rule gets a case where it has to stay quiet and one where it has to fire,
+because a rule that never fires passes "stays quiet" just as well. CI also runs
+`promtool check rules` and `percli lint` on the Perses dashboard.
 
 ## Limitations
 

@@ -1,15 +1,52 @@
 name: tests
 on: [push, pull_request]
+
+# Read-only token: nothing here needs to write to the repo.
+permissions:
+  contents: read
+
+# Actions and images are pinned to a commit / digest, the readable version is
+# in the comment. A moved tag can't change what runs here.
 jobs:
-  test:
+  python:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: ${{ matrix.python }}
       # No bleak needed: the tests replace the radio with stubs.
       - run: python -m unittest discover -s tests -v
+
+  prometheus-rules:
+    runs-on: ubuntu-latest
+    env:
+      PROMETHEUS: prom/prometheus@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e  # v3.15.0
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
+      - name: promtool check rules
+        run: docker run --rm --network none -v "$PWD:/w:ro" -w /w --entrypoint /bin/promtool "$PROMETHEUS" check rules prometheus/atmotube-rules.yml
+      # Each alert must stay quiet while things are fine and fire when they
+      # aren't - see the comments in the test file.
+      - name: promtool test rules
+        run: docker run --rm --network none -v "$PWD:/w:ro" -w /w --entrypoint /bin/promtool "$PROMETHEUS" test rules tests/atmotube-rules.test.yml
+
+  perses-dashboard:
+    runs-on: ubuntu-latest
+    env:
+      PERSES: persesdev/perses@sha256:549ed5cc23c95da5255d60b949c43547151a25c75408289ab676ea5dcfd0c1a0  # v0.55.0-rc.0
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
+      # Offline lint: syntax, object kinds, layout references to missing
+      # panels. Plugin fields are only checked by a running Perses.
+      - name: percli lint
+        run: docker run --rm --network none -v "$PWD/perses:/p:ro" --entrypoint /bin/percli "$PERSES" lint -d /p
