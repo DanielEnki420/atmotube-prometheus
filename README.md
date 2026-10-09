@@ -169,6 +169,9 @@ pick a dashboard:
   project `atmotube` and the dashboard in it. For file provisioning, copy both
   files into your provisioning folder instead. The dashboard names no data
   source of its own, so it uses your default Prometheus data source.
+
+  ![The Perses dashboard over 24 hours: air quality, particulate matter, VOC, climate, pressure, battery, signal and data path](docs/dashboard-perses.png)
+
 - **Grafana:** import `grafana/atmotube-dashboard.json` (it asks for your
   Prometheus data source).
 
