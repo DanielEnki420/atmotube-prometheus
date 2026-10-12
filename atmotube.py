@@ -53,7 +53,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -307,6 +307,11 @@ class State:
         self.bt_error = None
         self.packets = {"base": 0, "pm": 0, "combined": 0, "unknown": 0, "implausible": 0}
         self.gatt_reads = {"ok": 0, "error": 0}
+        # How long GATT reads take (connect, read, disconnect). A fair question
+        # once the fallback exists: does it make readings late? Latest duration
+        # per result, plus the running total for averages.
+        self.gatt_seconds = {}
+        self.gatt_seconds_total = {"ok": 0.0, "error": 0.0}
 
     def set(self, field, value, now, source):
         if value is not None:
@@ -656,6 +661,13 @@ def metrics_text(s, now, alerts=()):
         m("atmotube_advertisements_total", n, "Advertisements received since start", "counter", type=kind)
     for result, n in s.gatt_reads.items():
         m("atmotube_gatt_reads_total", n, "GATT reads since start", "counter", result=result)
+    for result, sec in s.gatt_seconds.items():
+        m("atmotube_gatt_read_seconds", round(sec, 3),
+          "Duration of the latest GATT read (connect, read, disconnect)", result=result)
+    for result, sec in s.gatt_seconds_total.items():
+        m("atmotube_gatt_read_seconds_total", round(sec, 3),
+          "Time spent in GATT reads since start; divided by atmotube_gatt_reads_total "
+          "it gives the average", "counter", result=result)
     for a in alerts:
         m("atmotube_alert_active", a.active, "1 while an alert is active", kind=a.kind)
     # The thresholds as well, so dashboards can colour by them instead of
@@ -798,6 +810,7 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
         now = time.time()
         if not stop.is_set() and gatt_due(s, now):
             s.last_gatt = now
+            started = time.monotonic()
             try:
                 raw = await asyncio.wait_for(read_gatt(s.device or s.address, client_cls), 45)
                 ok = apply_gatt(s, raw, time.time())
@@ -805,7 +818,11 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
                 # Most common reason: the phone app is connected to the Atmotube.
                 log.info("GATT read failed: %s: %s", type(e).__name__, e)
                 ok = False
-            s.gatt_reads["ok" if ok else "error"] += 1
+            result = "ok" if ok else "error"
+            took = time.monotonic() - started
+            s.gatt_reads[result] += 1
+            s.gatt_seconds[result] = took
+            s.gatt_seconds_total[result] += took
 
         now = time.time()
         process_alerts(s, alerts, now)

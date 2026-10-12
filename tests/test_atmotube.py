@@ -16,6 +16,7 @@ import importlib.util
 import io
 import os
 import pathlib
+import re
 import stat
 import struct
 import tempfile
@@ -468,12 +469,13 @@ def stub_scanner(packets, error=None):
     return Scanner
 
 
-def stub_client(answers):
+def stub_client(answers, delay=0):
     class Client:
         def __init__(self, target, timeout=None):
             pass
 
         async def __aenter__(self):
+            await asyncio.sleep(delay)              # connecting takes time
             return self
 
         async def __aexit__(self, *a):
@@ -563,6 +565,30 @@ class Exporter(unittest.TestCase):
         rc, out = self.diagnose([], {})
         self.assertEqual(rc, 1)
         self.assertIn("No Atmotube heard", out)
+
+    def test_gatt_read_duration(self):
+        atmo.PAUSE = 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        client = stub_client({
+            atmo.CHAR_BME280: struct.pack("<Bbih", 45, 22, 98765, 2247),
+            atmo.CHAR_STATUS: bytes([0x41, 90]),
+            atmo.CHAR_VOC: (350).to_bytes(2, "little") + b"\x00\x00"}, delay=0.2)
+        asyncio.run(atmo.run(scanner, client, rounds=1))
+        text = self.file()
+        last = float(re.search(r'^atmotube_gatt_read_seconds\{result="ok"\} (\S+)$', text, re.M).group(1))
+        total = float(re.search(r'^atmotube_gatt_read_seconds_total\{result="ok"\} (\S+)$', text, re.M).group(1))
+        self.assertGreaterEqual(last, 0.2)
+        self.assertLess(last, 5)
+        self.assertEqual(last, total)               # one read: latest == total
+        self.assertIn('atmotube_gatt_read_seconds_total{result="error"} 0\n', text)
+        self.assertNotIn('atmotube_gatt_read_seconds{result="error"}', text)
+        self.assertIn("# TYPE atmotube_gatt_read_seconds_total counter\n", text)
+
+    def test_no_gatt_read_no_duration(self):
+        atmo.PAUSE, atmo.GATT_AFTER = 0, 10 ** 6    # GATT never due
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        asyncio.run(atmo.run(scanner, stub_client({}), rounds=1))
+        self.assertNotIn("atmotube_gatt_read_seconds{", self.file())
 
     def test_failed_gatt_read_is_counted(self):
         atmo.PAUSE = 0
