@@ -566,6 +566,119 @@
             }
           ]
         }
+      },
+      "gattErrors": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "GATT errors per hour, by reason",
+            "description": "Why GATT reads fail. timeout: no answer in time. device_not_found: BlueZ no longer knows the device. bluez: BlueZ refused - often the phone app holding the connection. no_data: connected, nothing usable. other: see the log. Empty while no read fails."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0
+                },
+                "min": 0
+              },
+              "querySettings": [
+                {
+                  "queryIndex": 0,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#3987e5"
+                },
+                {
+                  "queryIndex": 1,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#d95926"
+                },
+                {
+                  "queryIndex": 2,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#199e70"
+                },
+                {
+                  "queryIndex": 3,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#c98500"
+                },
+                {
+                  "queryIndex": 4,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#d55181"
+                }
+              ]
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"timeout\"}[1h])) > 0",
+                    "seriesNameFormat": "timeout"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"device_not_found\"}[1h])) > 0",
+                    "seriesNameFormat": "device_not_found"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"bluez\"}[1h])) > 0",
+                    "seriesNameFormat": "bluez"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"no_data\"}[1h])) > 0",
+                    "seriesNameFormat": "no_data"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"other\"}[1h])) > 0",
+                    "seriesNameFormat": "other"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -728,6 +841,15 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/gattDuration"
+              }
+            },
+            {
+              "x": 0,
+              "y": 35,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/gattErrors"
               }
             }
           ]

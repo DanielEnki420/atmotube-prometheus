@@ -610,7 +610,84 @@ class Exporter(unittest.TestCase):
         atmo.PAUSE = 0
         scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
         asyncio.run(atmo.run(scanner, stub_client({}), rounds=1))
-        self.assertIn('atmotube_gatt_reads_total{result="error"} 1\n', self.file())
+        text = self.file()
+        self.assertIn('atmotube_gatt_reads_total{result="error"} 1\n', text)
+        # Connected, but no characteristic answered: that is no_data.
+        self.assertIn('atmotube_gatt_errors_total{reason="no_data"} 1\n', text)
+
+    def test_failed_reads_by_reason_add_up(self):
+        # Four rounds, four reads: a timeout, a device BlueZ forgot, nothing
+        # usable, and one that works. The reasons must add up to the errors -
+        # otherwise a failure would vanish between the two counters.
+        atmo.PAUSE = 0
+        outcomes = iter([TimeoutError(), BleakDeviceNotFoundError("gone"), {}, {
+            atmo.CHAR_STATUS: bytes([0x41, 90])}])
+
+        class Client:
+            def __init__(self, target, timeout=None):
+                self.answers = next(outcomes)
+
+            async def __aenter__(self):
+                if isinstance(self.answers, Exception):
+                    raise self.answers
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def read_gatt_char(self, char):
+                if char not in self.answers:
+                    raise OSError("not readable")
+                return bytearray(self.answers[char])
+
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        asyncio.run(atmo.run(scanner, Client, rounds=4))
+        text = self.file()
+        errors = {r: int(n) for r, n in re.findall(
+            r'^atmotube_gatt_errors_total\{reason="([a-z_]+)"\} (\d+)$', text, re.M)}
+        self.assertEqual(errors, {"timeout": 1, "device_not_found": 1, "bluez": 0,
+                                  "no_data": 1, "other": 0})
+        self.assertIn('atmotube_gatt_reads_total{result="error"} 3\n', text)
+        self.assertIn('atmotube_gatt_reads_total{result="ok"} 1\n', text)
+        self.assertIn("# TYPE atmotube_gatt_errors_total counter\n", text)
+
+
+# bleak's exception classes, rebuilt by name: the exporter recognises them by
+# class name, so the tests need no bleak - same hierarchy as bleak/exc.py.
+class BleakError(Exception):
+    pass
+
+
+class BleakDeviceNotFoundError(BleakError):
+    pass
+
+
+class BleakDBusError(BleakError):
+    pass
+
+
+class GattErrorReason(unittest.TestCase):
+    def test_reasons(self):
+        reason = atmo.gatt_error_reason
+        self.assertEqual(reason(None), "no_data")
+        self.assertEqual(reason(TimeoutError()), "timeout")
+        self.assertEqual(reason(asyncio.TimeoutError()), "timeout")   # differs from TimeoutError before 3.11
+        self.assertEqual(reason(BleakDeviceNotFoundError("gone")), "device_not_found")
+        self.assertEqual(reason(BleakDBusError("org.bluez.Error.Failed")), "bluez")
+        self.assertEqual(reason(BleakError("Not connected")), "other")
+        self.assertEqual(reason(OSError("whatever")), "other")
+
+    def test_subclasses_keep_their_reason(self):
+        class InProgress(BleakDBusError):
+            pass
+        self.assertEqual(atmo.gatt_error_reason(InProgress()), "bluez")
+
+    def test_every_reason_is_exported_from_the_start(self):
+        # increase() only sees a counter grow once the series exists - so all
+        # reasons are there at 0 before the first failure.
+        text = atmo.metrics_text(atmo.State(1000.0), 1000.0)
+        for r in atmo.GATT_ERROR_REASONS:
+            self.assertIn(f'atmotube_gatt_errors_total{{reason="{r}"}} 0\n', text)
 
 
 if __name__ == "__main__":

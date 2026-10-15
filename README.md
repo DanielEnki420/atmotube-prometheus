@@ -95,6 +95,11 @@ atmotube_advertisements_total{type="base"} 55
 atmotube_advertisements_total{type="pm"} 1482
 atmotube_gatt_reads_total{result="ok"} 1
 atmotube_gatt_reads_total{result="error"} 1
+atmotube_gatt_errors_total{reason="timeout"} 1
+atmotube_gatt_errors_total{reason="device_not_found"} 0
+atmotube_gatt_errors_total{reason="bluez"} 0
+atmotube_gatt_errors_total{reason="no_data"} 0
+atmotube_gatt_errors_total{reason="other"} 0
 atmotube_alert_active{kind="pm25"} 0
 atmotube_alert_threshold{kind="pm25",level="high"} 25
 atmotube_alert_threshold{kind="pm25",level="ok"} 15
@@ -115,6 +120,21 @@ this is the honest way to find out on your own adapter, and both dashboards
 show it in the panel *GATT read duration*. (Until v0.1.3 the first one was
 called `atmotube_gatt_read_seconds`; renamed because in OpenMetrics that is
 also the name of the counter's family.)
+
+`atmotube_gatt_errors_total{reason}` says why reads fail — the panel *GATT
+errors per hour, by reason* shows it:
+
+| reason | meaning |
+|---|---|
+| `timeout` | no answer in time: out of range, or busy elsewhere |
+| `device_not_found` | BlueZ no longer knows the device |
+| `bluez` | BlueZ refused, e.g. `le-connection-abort-by-local` or `InProgress` — often the phone app holding the connection |
+| `no_data` | connected, but nothing readable and plausible came back |
+| `other` | anything else; the log line has the details |
+
+All reasons are exported from the start, at 0, and they always add up to
+`atmotube_gatt_reads_total{result="error"}`. That counter keeps its labels, so
+anything that reads it by `result` keeps working.
 
 ## Setup (Raspberry Pi OS / Debian)
 

@@ -135,6 +135,14 @@ CHAR_PM = "db450005-8e9a-4818-add7-6ed94a328ab4"
 CHAR_NAMES = {CHAR_BME280: "BME280", CHAR_STATUS: "Status", CHAR_PM: "PM", CHAR_VOC: "VOC"}
 
 BASE_FIELDS = ("voc_ppb", "temperature", "humidity", "pressure_hpa", "status", "battery")
+# Why a GATT read failed. A fixed set, so the label can never grow:
+#   timeout           no answer in time (out of range, or busy elsewhere)
+#   device_not_found  BlueZ no longer knows the device
+#   bluez             BlueZ refused, e.g. "le-connection-abort-by-local" or
+#                     "InProgress" - often the phone app holding the connection
+#   no_data           connected, but nothing readable and plausible came back
+#   other             anything else; the log line has the details
+GATT_ERROR_REASONS = ("timeout", "device_not_found", "bluez", "no_data", "other")
 # Other Atmotubes are remembered only to log each one once. Anyone in radio
 # range can make up addresses with the name ATMOTUBE - without a cap that set
 # and the log would grow for as long as they keep at it.
@@ -307,6 +315,7 @@ class State:
         self.bt_error = None
         self.packets = {"base": 0, "pm": 0, "combined": 0, "unknown": 0, "implausible": 0}
         self.gatt_reads = {"ok": 0, "error": 0}
+        self.gatt_errors = {reason: 0 for reason in GATT_ERROR_REASONS}
         # How long GATT reads take (connect, read, disconnect). A fair question
         # once the fallback exists: does it make readings late? Latest duration
         # per result, plus the running total for averages.
@@ -400,6 +409,24 @@ def gatt_due(s, now):
     # swallows depends on which comes last in the merged event.
     older = min(s.adv_base or s.start, s.adv_pm or s.start)
     return now - older > GATT_AFTER
+
+
+def gatt_error_reason(e):
+    """Sort a failed GATT read into GATT_ERROR_REASONS. e is the exception, or
+    None when the read itself went through but brought nothing usable.
+    bleak's classes are recognised by name, so this works - and is tested -
+    without bleak installed."""
+    if e is None:
+        return "no_data"
+    # Python 3.9/3.10: asyncio.TimeoutError is not yet the built-in one.
+    if isinstance(e, (asyncio.TimeoutError, TimeoutError)):
+        return "timeout"
+    names = {c.__name__ for c in type(e).__mro__}
+    if "BleakDeviceNotFoundError" in names:
+        return "device_not_found"
+    if "BleakDBusError" in names:
+        return "bluez"
+    return "other"
 
 
 def apply_gatt(s, raw, now):
@@ -661,6 +688,13 @@ def metrics_text(s, now, alerts=()):
         m("atmotube_advertisements_total", n, "Advertisements received since start", "counter", type=kind)
     for result, n in s.gatt_reads.items():
         m("atmotube_gatt_reads_total", n, "GATT reads since start", "counter", result=result)
+    # A separate counter instead of a reason label on atmotube_gatt_reads_total:
+    # that one stays as it is, so anything reading it by result keeps working.
+    # All reasons from the start, at 0 - increase() needs a series to exist
+    # before it can see it grow.
+    for reason, n in s.gatt_errors.items():
+        m("atmotube_gatt_errors_total", n, "Failed GATT reads since start, by reason "
+          "(timeout, device_not_found, bluez, no_data, other)", "counter", reason=reason)
     # "last_read", not plain "atmotube_gatt_read_seconds": next to the counter
     # below that name would be the OpenMetrics family of the counter too
     # (OpenMetrics drops "_total"), and a gauge and a counter would collide
@@ -815,18 +849,27 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
         if not stop.is_set() and gatt_due(s, now):
             s.last_gatt = now
             started = time.monotonic()
+            error = None
             try:
                 raw = await asyncio.wait_for(read_gatt(s.device or s.address, client_cls), 45)
                 ok = apply_gatt(s, raw, time.time())
             except Exception as e:
-                # Most common reason: the phone app is connected to the Atmotube.
-                log.info("GATT read failed: %s: %s", type(e).__name__, e)
-                ok = False
+                error, ok = e, False
             result = "ok" if ok else "error"
             took = time.monotonic() - started
             s.gatt_reads[result] += 1
             s.gatt_seconds[result] = took
             s.gatt_seconds_total[result] += took
+            if not ok:
+                reason = gatt_error_reason(error)
+                s.gatt_errors[reason] += 1
+                # Most common cause: the phone app is connected to the Atmotube.
+                if error is None:
+                    log.info("GATT read failed (no_data): connected, but nothing usable "
+                             "came back after %.1f s", took)
+                else:
+                    log.info("GATT read failed (%s) after %.1f s: %s: %s",
+                             reason, took, type(error).__name__, error)
 
         now = time.time()
         process_alerts(s, alerts, now)
