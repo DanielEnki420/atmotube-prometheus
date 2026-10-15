@@ -137,12 +137,17 @@ CHAR_NAMES = {CHAR_BME280: "BME280", CHAR_STATUS: "Status", CHAR_PM: "PM", CHAR_
 BASE_FIELDS = ("voc_ppb", "temperature", "humidity", "pressure_hpa", "status", "battery")
 # Why a GATT read failed. A fixed set, so the label can never grow:
 #   timeout           no answer in time (out of range, or busy elsewhere)
+#   disconnected      the connection dropped while connecting or disconnecting.
+#                     bleak reports this as an empty EOFError: when BlueZ says
+#                     "disconnected", bleak closes its own D-Bus connection,
+#                     and the call still waiting for an answer gets EOF.
+#                     On the author's Pi 44 of 46 failures in a week.
 #   device_not_found  BlueZ no longer knows the device
 #   bluez             BlueZ refused, e.g. "le-connection-abort-by-local" or
 #                     "InProgress" - often the phone app holding the connection
 #   no_data           connected, but nothing readable and plausible came back
 #   other             anything else; the log line has the details
-GATT_ERROR_REASONS = ("timeout", "device_not_found", "bluez", "no_data", "other")
+GATT_ERROR_REASONS = ("timeout", "disconnected", "device_not_found", "bluez", "no_data", "other")
 # Other Atmotubes are remembered only to log each one once. Anyone in radio
 # range can make up addresses with the name ATMOTUBE - without a cap that set
 # and the log would grow for as long as they keep at it.
@@ -421,11 +426,21 @@ def gatt_error_reason(e):
     # Python 3.9/3.10: asyncio.TimeoutError is not yet the built-in one.
     if isinstance(e, (asyncio.TimeoutError, TimeoutError)):
         return "timeout"
+    if isinstance(e, EOFError):
+        return "disconnected"
     names = {c.__name__ for c in type(e).__mro__}
-    if "BleakDeviceNotFoundError" in names:
+    text = str(e)
+    # bleak has a class for "not found" - and also raises a plain BleakError
+    # "device 'dev_AA_BB_...' not found" when BlueZ dropped the device object
+    # (seen on the author's Pi). Both mean the same.
+    if "BleakDeviceNotFoundError" in names or (
+            "BleakError" in names and text.startswith("device '") and text.endswith("' not found")):
         return "device_not_found"
     if "BleakDBusError" in names:
         return "bluez"
+    # e.g. "failed to discover services, device disconnected"
+    if "BleakError" in names and "disconnected" in text.lower():
+        return "disconnected"
     return "other"
 
 
@@ -693,8 +708,8 @@ def metrics_text(s, now, alerts=()):
     # All reasons from the start, at 0 - increase() needs a series to exist
     # before it can see it grow.
     for reason, n in s.gatt_errors.items():
-        m("atmotube_gatt_errors_total", n, "Failed GATT reads since start, by reason "
-          "(timeout, device_not_found, bluez, no_data, other)", "counter", reason=reason)
+        m("atmotube_gatt_errors_total", n, "Failed GATT reads since start, by reason ("
+          + ", ".join(GATT_ERROR_REASONS) + ")", "counter", reason=reason)
     # "last_read", not plain "atmotube_gatt_read_seconds": next to the counter
     # below that name would be the OpenMetrics family of the counter too
     # (OpenMetrics drops "_total"), and a gauge and a counter would collide
@@ -801,17 +816,26 @@ async def listen(s, seconds, stop, scanner_cls=None):
         await _wait(stop, seconds)
 
 
-async def read_gatt(target, client_cls=None):
-    """Connect briefly, read four characteristics, disconnect. -> {uuid: bytes}"""
+async def read_gatt(target, client_cls=None, progress=None):
+    """Connect briefly, read four characteristics, disconnect. -> {uuid: bytes}
+
+    progress["stage"] says how far it got: connecting, reading, disconnecting.
+    A dict the caller owns, so the stage is still there after a timeout has
+    cancelled this coroutine. A failure that reaches the caller can only come
+    from connecting or disconnecting - each single read catches its own."""
     if client_cls is None:
         from bleak import BleakClient as client_cls
+    progress = {} if progress is None else progress
     raw = {}
+    progress["stage"] = "connecting"
     async with client_cls(target, timeout=15.0) as c:
+        progress["stage"] = "reading"
         for ch in (CHAR_BME280, CHAR_STATUS, CHAR_PM, CHAR_VOC):
             try:
                 raw[ch] = bytes(await c.read_gatt_char(ch))
             except Exception as e:
                 log.debug("Characteristic %s not readable: %s", CHAR_NAMES[ch], e)
+        progress["stage"] = "disconnecting"
     return raw
 
 
@@ -849,9 +873,9 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
         if not stop.is_set() and gatt_due(s, now):
             s.last_gatt = now
             started = time.monotonic()
-            error = None
+            error, progress = None, {}
             try:
-                raw = await asyncio.wait_for(read_gatt(s.device or s.address, client_cls), 45)
+                raw = await asyncio.wait_for(read_gatt(s.device or s.address, client_cls, progress), 45)
                 ok = apply_gatt(s, raw, time.time())
             except Exception as e:
                 error, ok = e, False
@@ -868,8 +892,9 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
                     log.info("GATT read failed (no_data): connected, but nothing usable "
                              "came back after %.1f s", took)
                 else:
-                    log.info("GATT read failed (%s) after %.1f s: %s: %s",
-                             reason, took, type(error).__name__, error)
+                    log.info("GATT read failed (%s) while %s after %.1f s: %s: %s",
+                             reason, progress.get("stage", "starting"), took,
+                             type(error).__name__, error)
 
         now = time.time()
         process_alerts(s, alerts, now)

@@ -1287,7 +1287,7 @@
     {
       "type": "timeseries",
       "title": "GATT errors per hour, by reason",
-      "description": "Why GATT reads fail. timeout: no answer in time. device_not_found: BlueZ no longer knows the device. bluez: BlueZ refused - often the phone app holding the connection. no_data: connected, nothing usable. other: see the log. Empty while no read fails.",
+      "description": "Why GATT reads fail. timeout: no answer in time. disconnected: the connection dropped while connecting or disconnecting (bleak: EOFError). device_not_found: BlueZ no longer knows the device. bluez: BlueZ refused - often the phone app holding the connection. no_data: connected, nothing usable. other: see the log. Empty while no read fails.",
       "gridPos": {
         "x": 12,
         "y": 36,
@@ -1316,8 +1316,20 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"device_not_found\"}[1h])) > 0",
+          "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"disconnected\"}[1h])) > 0",
           "refId": "B",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "legendFormat": "disconnected"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"device_not_found\"}[1h])) > 0",
+          "refId": "C",
           "editorMode": "code",
           "range": true,
           "instant": false,
@@ -1329,7 +1341,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"bluez\"}[1h])) > 0",
-          "refId": "C",
+          "refId": "D",
           "editorMode": "code",
           "range": true,
           "instant": false,
@@ -1341,7 +1353,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"no_data\"}[1h])) > 0",
-          "refId": "D",
+          "refId": "E",
           "editorMode": "code",
           "range": true,
           "instant": false,
@@ -1353,7 +1365,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "expr": "sum(increase(atmotube_gatt_errors_total{reason=\"other\"}[1h])) > 0",
-          "refId": "E",
+          "refId": "F",
           "editorMode": "code",
           "range": true,
           "instant": false,
@@ -1411,7 +1423,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "device_not_found"
+              "options": "disconnected"
             },
             "properties": [
               {
@@ -1426,7 +1438,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "bluez"
+              "options": "device_not_found"
             },
             "properties": [
               {
@@ -1441,7 +1453,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "no_data"
+              "options": "bluez"
             },
             "properties": [
               {
@@ -1456,7 +1468,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "other"
+              "options": "no_data"
             },
             "properties": [
               {
@@ -1464,6 +1476,21 @@
                 "value": {
                   "mode": "fixed",
                   "fixedColor": "#d55181"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "other"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#008300"
                 }
               }
             ]

@@ -96,6 +96,7 @@ atmotube_advertisements_total{type="pm"} 1482
 atmotube_gatt_reads_total{result="ok"} 1
 atmotube_gatt_reads_total{result="error"} 1
 atmotube_gatt_errors_total{reason="timeout"} 1
+atmotube_gatt_errors_total{reason="disconnected"} 0
 atmotube_gatt_errors_total{reason="device_not_found"} 0
 atmotube_gatt_errors_total{reason="bluez"} 0
 atmotube_gatt_errors_total{reason="no_data"} 0
@@ -127,10 +128,14 @@ errors per hour, by reason* shows it:
 | reason | meaning |
 |---|---|
 | `timeout` | no answer in time: out of range, or busy elsewhere |
-| `device_not_found` | BlueZ no longer knows the device |
+| `disconnected` | the connection dropped while connecting or disconnecting — bleak reports this as an empty `EOFError` (on the author's Pi 44 of 46 failures in a week) |
+| `device_not_found` | BlueZ no longer knows the device (bleak: `BleakDeviceNotFoundError`, or a plain `BleakError` "device '…' not found") |
 | `bluez` | BlueZ refused, e.g. `le-connection-abort-by-local` or `InProgress` — often the phone app holding the connection |
 | `no_data` | connected, but nothing readable and plausible came back |
 | `other` | anything else; the log line has the details |
+
+The log line also says where it failed — `while connecting`, `while reading`
+or `while disconnecting` — and after how many seconds.
 
 All reasons are exported from the start, at 0, and they always add up to
 `atmotube_gatt_reads_total{result="error"}`. That counter keeps its labels, so

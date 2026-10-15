@@ -616,11 +616,12 @@ class Exporter(unittest.TestCase):
         self.assertIn('atmotube_gatt_errors_total{reason="no_data"} 1\n', text)
 
     def test_failed_reads_by_reason_add_up(self):
-        # Four rounds, four reads: a timeout, a device BlueZ forgot, nothing
-        # usable, and one that works. The reasons must add up to the errors -
-        # otherwise a failure would vanish between the two counters.
+        # Five rounds, five reads: a timeout, a dropped connection, a device
+        # BlueZ forgot, nothing usable, and one that works. The reasons must
+        # add up to the errors - otherwise a failure would vanish between the
+        # two counters.
         atmo.PAUSE = 0
-        outcomes = iter([TimeoutError(), BleakDeviceNotFoundError("gone"), {}, {
+        outcomes = iter([TimeoutError(), EOFError(), BleakDeviceNotFoundError("gone"), {}, {
             atmo.CHAR_STATUS: bytes([0x41, 90])}])
 
         class Client:
@@ -641,13 +642,13 @@ class Exporter(unittest.TestCase):
                 return bytearray(self.answers[char])
 
         scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
-        asyncio.run(atmo.run(scanner, Client, rounds=4))
+        asyncio.run(atmo.run(scanner, Client, rounds=5))
         text = self.file()
         errors = {r: int(n) for r, n in re.findall(
             r'^atmotube_gatt_errors_total\{reason="([a-z_]+)"\} (\d+)$', text, re.M)}
-        self.assertEqual(errors, {"timeout": 1, "device_not_found": 1, "bluez": 0,
-                                  "no_data": 1, "other": 0})
-        self.assertIn('atmotube_gatt_reads_total{result="error"} 3\n', text)
+        self.assertEqual(errors, {"timeout": 1, "disconnected": 1, "device_not_found": 1,
+                                  "bluez": 0, "no_data": 1, "other": 0})
+        self.assertIn('atmotube_gatt_reads_total{result="error"} 4\n', text)
         self.assertIn('atmotube_gatt_reads_total{result="ok"} 1\n', text)
         self.assertIn("# TYPE atmotube_gatt_errors_total counter\n", text)
 
@@ -677,10 +678,62 @@ class GattErrorReason(unittest.TestCase):
         self.assertEqual(reason(BleakError("Not connected")), "other")
         self.assertEqual(reason(OSError("whatever")), "other")
 
+    def test_what_the_authors_pi_logged(self):
+        # One week on the author's Pi (v0.1.3 log): 44 x "EOFError:" with an
+        # empty message, 2 x the plain BleakError below. In the first version
+        # of this counter both landed in "other" - 46 of 46 failures.
+        reason = atmo.gatt_error_reason
+        self.assertEqual(reason(EOFError()), "disconnected")
+        self.assertEqual(reason(BleakError("device 'dev_E7_E9_DC_75_C6_26' not found")),
+                         "device_not_found")
+        # bleak's own wording when the device drops during service discovery
+        self.assertEqual(reason(BleakError("failed to discover services, device disconnected")),
+                         "disconnected")
+        # Similar wording that means something else stays out:
+        self.assertEqual(reason(BleakError("adapter 'hci0' not found")), "other")
+
     def test_subclasses_keep_their_reason(self):
         class InProgress(BleakDBusError):
             pass
         self.assertEqual(atmo.gatt_error_reason(InProgress()), "bluez")
+
+    def test_stage_says_where_it_failed(self):
+        # A failure that reaches the exporter comes from connecting or from
+        # disconnecting - the log line names which. The stage must survive a
+        # timeout that cancels the read from outside.
+        def client(fail_on):
+            class Client:
+                def __init__(self, target, timeout=None):
+                    pass
+
+                async def __aenter__(self):
+                    if fail_on == "enter":
+                        raise EOFError()
+                    if fail_on == "hang":
+                        await asyncio.sleep(10)
+                    return self
+
+                async def __aexit__(self, *a):
+                    if fail_on == "exit":
+                        raise EOFError()
+                    return False
+
+                async def read_gatt_char(self, char):
+                    return bytearray(b"\x41\x5a")
+            return Client
+
+        async def attempt(fail_on):
+            progress = {}
+            try:
+                await asyncio.wait_for(atmo.read_gatt("AA:BB", client(fail_on), progress), 0.2)
+            except (EOFError, asyncio.TimeoutError):
+                pass
+            return progress.get("stage")
+
+        self.assertEqual(asyncio.run(attempt("enter")), "connecting")
+        self.assertEqual(asyncio.run(attempt("hang")), "connecting")
+        self.assertEqual(asyncio.run(attempt("exit")), "disconnecting")
+        self.assertEqual(asyncio.run(attempt(None)), "disconnecting")   # done: past the last step
 
     def test_every_reason_is_exported_from_the_start(self):
         # increase() only sees a counter grow once the series exists - so all

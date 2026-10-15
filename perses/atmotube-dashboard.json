@@ -572,7 +572,7 @@
         "spec": {
           "display": {
             "name": "GATT errors per hour, by reason",
-            "description": "Why GATT reads fail. timeout: no answer in time. device_not_found: BlueZ no longer knows the device. bluez: BlueZ refused - often the phone app holding the connection. no_data: connected, nothing usable. other: see the log. Empty while no read fails."
+            "description": "Why GATT reads fail. timeout: no answer in time. disconnected: the connection dropped while connecting or disconnecting (bleak: EOFError). device_not_found: BlueZ no longer knows the device. bluez: BlueZ refused - often the phone app holding the connection. no_data: connected, nothing usable. other: see the log. Empty while no read fails."
           },
           "plugin": {
             "kind": "TimeSeriesChart",
@@ -612,6 +612,11 @@
                   "queryIndex": 4,
                   "colorMode": "fixed-single",
                   "colorValue": "#d55181"
+                },
+                {
+                  "queryIndex": 5,
+                  "colorMode": "fixed-single",
+                  "colorValue": "#008300"
                 }
               ]
             }
@@ -625,6 +630,18 @@
                   "spec": {
                     "query": "sum(increase(atmotube_gatt_errors_total{reason=\"timeout\"}[1h])) > 0",
                     "seriesNameFormat": "timeout"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(increase(atmotube_gatt_errors_total{reason=\"disconnected\"}[1h])) > 0",
+                    "seriesNameFormat": "disconnected"
                   }
                 }
               }
