@@ -556,6 +556,22 @@ class Exporter(unittest.TestCase):
             rc = asyncio.run(atmo.diagnose(0, stub_scanner(packets), client or stub_client(answers)))
         return rc, buf.getvalue()
 
+    def test_diagnose_error_text_cannot_rewrite_the_terminal(self):
+        class Hostile:
+            def __init__(self, target, timeout=None):
+                pass
+
+            async def __aenter__(self):
+                raise OSError("dev\x1b[2J\x1b]0;owned\x07\n  ✓ fake")
+
+            async def __aexit__(self, *a):
+                return False
+        rc, out = self.diagnose([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)], {}, client=Hostile)
+        self.assertIn("failed while connecting", out)
+        self.assertNotIn("\x1b", out)
+        self.assertNotIn("\x07", out)
+        self.assertNotIn("\n  ✓ fake", out)
+
     def test_diagnose_detects_swallowed_base_readings(self):
         rc, out = self.diagnose([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)],
                                 {atmo.CHAR_STATUS: bytes([0x41, 90])})
@@ -733,7 +749,7 @@ class GattErrorReason(unittest.TestCase):
         # of this counter both landed in "other" - 46 of 46 failures.
         reason = atmo.gatt_error_reason
         self.assertEqual(reason(EOFError()), "disconnected")
-        self.assertEqual(reason(BleakError("device 'dev_E7_E9_DC_75_C6_26' not found")),
+        self.assertEqual(reason(BleakError("device 'dev_AA_BB_CC_DD_EE_FF' not found")),
                          "device_not_found")
         # bleak's own wording when the device drops during service discovery
         self.assertEqual(reason(BleakError("failed to discover services, device disconnected")),

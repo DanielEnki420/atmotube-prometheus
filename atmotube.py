@@ -1028,7 +1028,10 @@ async def diagnose(seconds, scanner_cls=None, client_cls=None):
     except Exception as e:
         raw = (progress.get("raw") or {}) if progress.get("stage") == "disconnecting" else {}
         stage = progress.get("stage", "starting")
-        print(f"  ✗ failed while {stage} ({gatt_error_reason(e)}): {type(e).__name__}: {e}")
+        # printable(): the message can carry a device path; keep the terminal safe
+        # the same way as for device names.
+        print(f"  ✗ failed while {stage} ({gatt_error_reason(e)}): {type(e).__name__}: "
+              f"{printable(e, 160)}")
         if raw:
             print("    The values below were read before that - the exporter keeps them.")
         else:
