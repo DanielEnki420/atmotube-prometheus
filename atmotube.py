@@ -53,7 +53,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "0.1.4.dev0"
+__version__ = "0.1.4"
 
 logging.basicConfig(
     level=logging.INFO,
