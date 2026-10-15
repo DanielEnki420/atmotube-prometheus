@@ -575,20 +575,36 @@ class Exporter(unittest.TestCase):
             atmo.CHAR_VOC: (350).to_bytes(2, "little") + b"\x00\x00"}, delay=0.2)
         asyncio.run(atmo.run(scanner, client, rounds=1))
         text = self.file()
-        last = float(re.search(r'^atmotube_gatt_read_seconds\{result="ok"\} (\S+)$', text, re.M).group(1))
+        last = float(re.search(r'^atmotube_gatt_last_read_seconds\{result="ok"\} (\S+)$', text, re.M).group(1))
         total = float(re.search(r'^atmotube_gatt_read_seconds_total\{result="ok"\} (\S+)$', text, re.M).group(1))
         self.assertGreaterEqual(last, 0.2)
         self.assertLess(last, 5)
         self.assertEqual(last, total)               # one read: latest == total
         self.assertIn('atmotube_gatt_read_seconds_total{result="error"} 0\n', text)
-        self.assertNotIn('atmotube_gatt_read_seconds{result="error"}', text)
+        self.assertNotIn('atmotube_gatt_last_read_seconds{result="error"}', text)
         self.assertIn("# TYPE atmotube_gatt_read_seconds_total counter\n", text)
+
+    def test_no_openmetrics_family_collision(self):
+        # OpenMetrics names a counter family without "_total". A gauge called
+        # like that stem (v0.1.3: atmotube_gatt_read_seconds next to
+        # atmotube_gatt_read_seconds_total) collides as soon as anything
+        # re-exposes the file as OpenMetrics. Checked on the full output,
+        # with a GATT read done, so every metric family is present.
+        atmo.PAUSE = 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        client = stub_client({atmo.CHAR_STATUS: bytes([0x41, 90])})
+        asyncio.run(atmo.run(scanner, client, rounds=1))
+        families = dict(re.findall(r"^# TYPE (\S+) (\S+)$", self.file(), re.M))
+        self.assertIn("atmotube_gatt_read_seconds_total", families)
+        clashes = {name for name, kind in families.items()
+                   if kind == "counter" and name.endswith("_total") and name[:-6] in families}
+        self.assertEqual(clashes, set())
 
     def test_no_gatt_read_no_duration(self):
         atmo.PAUSE, atmo.GATT_AFTER = 0, 10 ** 6    # GATT never due
         scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
         asyncio.run(atmo.run(scanner, stub_client({}), rounds=1))
-        self.assertNotIn("atmotube_gatt_read_seconds{", self.file())
+        self.assertNotIn("atmotube_gatt_last_read_seconds{", self.file())
 
     def test_failed_gatt_read_is_counted(self):
         atmo.PAUSE = 0

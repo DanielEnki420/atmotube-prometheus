@@ -53,7 +53,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "0.1.3"
+__version__ = "0.1.4.dev0"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -661,8 +661,12 @@ def metrics_text(s, now, alerts=()):
         m("atmotube_advertisements_total", n, "Advertisements received since start", "counter", type=kind)
     for result, n in s.gatt_reads.items():
         m("atmotube_gatt_reads_total", n, "GATT reads since start", "counter", result=result)
+    # "last_read", not plain "atmotube_gatt_read_seconds": next to the counter
+    # below that name would be the OpenMetrics family of the counter too
+    # (OpenMetrics drops "_total"), and a gauge and a counter would collide
+    # wherever the file is re-exposed as OpenMetrics.
     for result, sec in s.gatt_seconds.items():
-        m("atmotube_gatt_read_seconds", round(sec, 3),
+        m("atmotube_gatt_last_read_seconds", round(sec, 3),
           "Duration of the latest GATT read (connect, read, disconnect)", result=result)
     for result, sec in s.gatt_seconds_total.items():
         m("atmotube_gatt_read_seconds_total", round(sec, 3),

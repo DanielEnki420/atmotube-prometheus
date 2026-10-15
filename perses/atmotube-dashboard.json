@@ -528,6 +528,44 @@
             }
           ]
         }
+      },
+      "gattDuration": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "GATT read duration (s)",
+            "description": "How long one GATT read takes: connect, read four characteristics, disconnect. The exporter is not listening meanwhile, so this is the delay the fallback adds. An error average close to 45 s means most failed reads ran into the timeout."
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "position": "bottom"
+              },
+              "yAxis": {
+                "format": {
+                  "unit": "seconds",
+                  "decimalPlaces": 1
+                },
+                "min": 0
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (result) (increase(atmotube_gatt_read_seconds_total[1h])) / (sum by (result) (increase(atmotube_gatt_reads_total[1h])) > 0)",
+                    "seriesNameFormat": "{{result}} (1 h average)"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -681,6 +719,15 @@
               "height": 7,
               "content": {
                 "$ref": "#/spec/panels/alerts"
+              }
+            },
+            {
+              "x": 12,
+              "y": 28,
+              "width": 12,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/gattDuration"
               }
             }
           ]

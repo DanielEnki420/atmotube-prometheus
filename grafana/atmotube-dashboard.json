@@ -1203,6 +1203,86 @@
         }
       },
       "id": 15
+    },
+    {
+      "type": "timeseries",
+      "title": "GATT read duration",
+      "description": "How long one GATT read takes: connect, read four characteristics, disconnect. The exporter is not listening meanwhile, so this is the delay the fallback adds. An error average close to 45 s means most failed reads ran into the timeout.",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (result) (increase(atmotube_gatt_read_seconds_total[1h])) / (sum by (result) (increase(atmotube_gatt_reads_total[1h])) > 0)",
+          "refId": "A",
+          "editorMode": "code",
+          "range": true,
+          "instant": false,
+          "legendFormat": "{{result}} (1 h average)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": false,
+            "pointSize": 8,
+            "stacking": {
+              "mode": "none"
+            },
+            "axisBorderShow": false,
+            "gradientMode": "none"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "min": 0,
+          "max": null,
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "mean",
+            "min",
+            "max"
+          ],
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 16
     }
   ]
 }

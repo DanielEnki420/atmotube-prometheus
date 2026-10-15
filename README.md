@@ -106,12 +106,15 @@ worst sub-score of VOC, PM1, PM2.5 and PM10. The thresholds are exported too, so
 a dashboard can colour by them instead of keeping a copy that drifts the day you
 change one.
 
-`atmotube_gatt_read_seconds{result}` is how long the latest GATT read took
+`atmotube_gatt_last_read_seconds{result}` is how long the latest GATT read took
 (connect, read four characteristics, disconnect), and
 `atmotube_gatt_read_seconds_total{result}` adds them up — divided by
 `atmotube_gatt_reads_total` you get the average. Both appear once the fallback
 has run at least once. Someone asked whether the fallback makes readings late;
-this is the honest way to find out on your own adapter.
+this is the honest way to find out on your own adapter, and both dashboards
+show it in the panel *GATT read duration*. (Until v0.1.3 the first one was
+called `atmotube_gatt_read_seconds`; renamed because in OpenMetrics that is
+also the name of the counter's family.)
 
 ## Setup (Raspberry Pi OS / Debian)
 
