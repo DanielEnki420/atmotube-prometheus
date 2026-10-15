@@ -819,14 +819,15 @@ async def listen(s, seconds, stop, scanner_cls=None):
 async def read_gatt(target, client_cls=None, progress=None):
     """Connect briefly, read four characteristics, disconnect. -> {uuid: bytes}
 
-    progress["stage"] says how far it got: connecting, reading, disconnecting.
-    A dict the caller owns, so the stage is still there after a timeout has
-    cancelled this coroutine. A failure that reaches the caller can only come
-    from connecting or disconnecting - each single read catches its own."""
+    progress["stage"] says how far it got: connecting, reading, disconnecting,
+    and progress["raw"] holds what was read so far. A dict the caller owns, so
+    both are still there after a timeout has cancelled this coroutine. A
+    failure that reaches the caller can only come from connecting or
+    disconnecting - each single read catches its own."""
     if client_cls is None:
         from bleak import BleakClient as client_cls
     progress = {} if progress is None else progress
-    raw = {}
+    raw = progress["raw"] = {}
     progress["stage"] = "connecting"
     async with client_cls(target, timeout=15.0) as c:
         progress["stage"] = "reading"
@@ -879,6 +880,17 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
                 ok = apply_gatt(s, raw, time.time())
             except Exception as e:
                 error, ok = e, False
+                # The values were read - only saying goodbye failed. On the
+                # author's Pi failed and successful reads took the same time
+                # (5.0 s vs 5.2 s over 55 reads): the connection dropped while
+                # disconnecting, and half of all GATT reads threw away values
+                # that had already arrived. Keep them.
+                if progress.get("stage") == "disconnecting" and progress.get("raw"):
+                    ok = apply_gatt(s, progress["raw"], time.time())
+                    if ok:
+                        error = None
+                        log.info("GATT read OK - values kept, but disconnecting failed: %s: %s",
+                                 type(e).__name__, e)
             result = "ok" if ok else "error"
             took = time.monotonic() - started
             s.gatt_reads[result] += 1
@@ -1010,12 +1022,17 @@ async def diagnose(seconds, scanner_cls=None, client_cls=None):
         print("  ! Packets with unknown layout or implausible values - please keep this output")
 
     print(f"\nGATT read from {address} ...")
+    progress = {}
     try:
-        raw = await asyncio.wait_for(read_gatt(f["device"] or address, client_cls), 45)
+        raw = await asyncio.wait_for(read_gatt(f["device"] or address, client_cls, progress), 45)
     except Exception as e:
-        print(f"  ✗ failed: {type(e).__name__}: {e}")
-        print("    Most common reason: the phone app is connected. Close it and try again.")
-        raw = {}
+        raw = (progress.get("raw") or {}) if progress.get("stage") == "disconnecting" else {}
+        stage = progress.get("stage", "starting")
+        print(f"  ✗ failed while {stage} ({gatt_error_reason(e)}): {type(e).__name__}: {e}")
+        if raw:
+            print("    The values below were read before that - the exporter keeps them.")
+        else:
+            print("    Most common reason: the phone app is connected. Close it and try again.")
     for ch, decoder in ((CHAR_BME280, decode_bme280_gatt), (CHAR_STATUS, decode_status_gatt),
                         (CHAR_PM, decode_pm_gatt), (CHAR_VOC, decode_voc_gatt)):
         if ch in raw:

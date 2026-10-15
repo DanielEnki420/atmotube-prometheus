@@ -128,7 +128,7 @@ errors per hour, by reason* shows it:
 | reason | meaning |
 |---|---|
 | `timeout` | no answer in time: out of range, or busy elsewhere |
-| `disconnected` | the connection dropped while connecting or disconnecting — bleak reports this as an empty `EOFError` (on the author's Pi 44 of 46 failures in a week) |
+| `disconnected` | the connection dropped while connecting, or while disconnecting with nothing read — bleak reports this as an empty `EOFError` (on the author's Pi 44 of 46 failures in a week, see below) |
 | `device_not_found` | BlueZ no longer knows the device (bleak: `BleakDeviceNotFoundError`, or a plain `BleakError` "device '…' not found") |
 | `bluez` | BlueZ refused, e.g. `le-connection-abort-by-local` or `InProgress` — often the phone app holding the connection |
 | `no_data` | connected, but nothing readable and plausible came back |
@@ -136,6 +136,13 @@ errors per hour, by reason* shows it:
 
 The log line also says where it failed — `while connecting`, `while reading`
 or `while disconnecting` — and after how many seconds.
+
+If the connection only drops **while disconnecting** — after all four
+characteristics were read — the values are kept and the read counts as `ok`;
+the log says `GATT read OK - values kept, but disconnecting failed`. On the
+author's Pi failed and successful reads took the same time (5.0 s vs 5.2 s
+over 55 reads), which is what this looks like: until v0.1.3 about half of all
+GATT reads threw away values that had already arrived.
 
 All reasons are exported from the start, at 0, and they always add up to
 `atmotube_gatt_reads_total{result="error"}`. That counter keeps its labels, so

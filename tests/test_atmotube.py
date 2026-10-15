@@ -488,6 +488,26 @@ def stub_client(answers, delay=0):
     return Client
 
 
+def stub_client_drops_on_disconnect(answers):
+    """Reads work, saying goodbye fails - what the author's Pi showed: failed
+    and successful GATT reads took the same time (5.0 s vs 5.2 s)."""
+    class Client:
+        def __init__(self, target, timeout=None):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            raise EOFError()
+
+        async def read_gatt_char(self, char):
+            if char not in answers:
+                raise OSError("not readable")
+            return bytearray(answers[char])
+    return Client
+
+
 class Exporter(unittest.TestCase):
     def setUp(self):
         self.old = {k: getattr(atmo, k) for k in
@@ -530,10 +550,10 @@ class Exporter(unittest.TestCase):
         self.assertIn("atmotube_last_run_timestamp_seconds ", text)
         self.assertNotIn("atmotube_temperature_celsius", text)
 
-    def diagnose(self, packets, answers):
+    def diagnose(self, packets, answers, client=None):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = asyncio.run(atmo.diagnose(0, stub_scanner(packets), stub_client(answers)))
+            rc = asyncio.run(atmo.diagnose(0, stub_scanner(packets), client or stub_client(answers)))
         return rc, buf.getvalue()
 
     def test_diagnose_detects_swallowed_base_readings(self):
@@ -614,6 +634,35 @@ class Exporter(unittest.TestCase):
         self.assertIn('atmotube_gatt_reads_total{result="error"} 1\n', text)
         # Connected, but no characteristic answered: that is no_data.
         self.assertIn('atmotube_gatt_errors_total{reason="no_data"} 1\n', text)
+
+    def test_values_kept_when_only_disconnecting_fails(self):
+        atmo.PAUSE = 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        client = stub_client_drops_on_disconnect({
+            atmo.CHAR_BME280: struct.pack("<Bbih", 45, 22, 98765, 2247),
+            atmo.CHAR_STATUS: bytes([0x41, 90])})
+        asyncio.run(atmo.run(scanner, client, rounds=1))
+        text = self.file()
+        self.assertIn("atmotube_temperature_celsius 22.47\n", text)
+        self.assertIn('atmotube_gatt_reads_total{result="ok"} 1\n', text)
+        self.assertIn('atmotube_gatt_reads_total{result="error"} 0\n', text)
+        self.assertIn('atmotube_gatt_errors_total{reason="disconnected"} 0\n', text)
+
+    def test_nothing_read_and_disconnecting_fails_is_an_error(self):
+        atmo.PAUSE = 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        asyncio.run(atmo.run(scanner, stub_client_drops_on_disconnect({}), rounds=1))
+        text = self.file()
+        self.assertIn('atmotube_gatt_reads_total{result="error"} 1\n', text)
+        self.assertIn('atmotube_gatt_errors_total{reason="disconnected"} 1\n', text)
+
+    def test_diagnose_shows_values_read_before_disconnecting_failed(self):
+        rc, out = self.diagnose([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)],
+                                {}, client=stub_client_drops_on_disconnect(
+                                    {atmo.CHAR_STATUS: bytes([0x41, 90])}))
+        self.assertIn("failed while disconnecting (disconnected)", out)
+        self.assertIn("The values below were read before that", out)
+        self.assertIn("battery 90 %", out.lower())
 
     def test_failed_reads_by_reason_add_up(self):
         # Five rounds, five reads: a timeout, a dropped connection, a device
@@ -716,6 +765,8 @@ class GattErrorReason(unittest.TestCase):
                 async def __aexit__(self, *a):
                     if fail_on == "exit":
                         raise EOFError()
+                    if fail_on == "exit-hang":
+                        await asyncio.sleep(10)
                     return False
 
                 async def read_gatt_char(self, char):
@@ -728,12 +779,14 @@ class GattErrorReason(unittest.TestCase):
                 await asyncio.wait_for(atmo.read_gatt("AA:BB", client(fail_on), progress), 0.2)
             except (EOFError, asyncio.TimeoutError):
                 pass
-            return progress.get("stage")
+            return progress.get("stage"), len(progress.get("raw", {}))
 
-        self.assertEqual(asyncio.run(attempt("enter")), "connecting")
-        self.assertEqual(asyncio.run(attempt("hang")), "connecting")
-        self.assertEqual(asyncio.run(attempt("exit")), "disconnecting")
-        self.assertEqual(asyncio.run(attempt(None)), "disconnecting")   # done: past the last step
+        self.assertEqual(asyncio.run(attempt("enter")), ("connecting", 0))
+        self.assertEqual(asyncio.run(attempt("hang")), ("connecting", 0))
+        self.assertEqual(asyncio.run(attempt("exit")), ("disconnecting", 4))
+        # A timeout while disconnecting: what was read is still there for the caller.
+        self.assertEqual(asyncio.run(attempt("exit-hang")), ("disconnecting", 4))
+        self.assertEqual(asyncio.run(attempt(None)), ("disconnecting", 4))   # done: past the last step
 
     def test_every_reason_is_exported_from_the_start(self):
         # increase() only sees a counter grow once the series exists - so all
