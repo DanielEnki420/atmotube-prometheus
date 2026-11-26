@@ -867,7 +867,8 @@ class HangGuardTests(unittest.TestCase):
     def test_bounded_slow_call_times_out_like_wait_for(self):
         async def slow():
             await asyncio.sleep(3600)
-        with self.assertRaises(TimeoutError) as cm:
+        # Python 3.9/3.10: asyncio.TimeoutError is not yet the built-in one
+        with self.assertRaises((asyncio.TimeoutError, TimeoutError)) as cm:
             asyncio.run(atmo._bounded(slow(), 0.05, "GATT read"))
         self.assertIn("GATT read", str(cm.exception))
         self.assertEqual(self.exit_codes, [])

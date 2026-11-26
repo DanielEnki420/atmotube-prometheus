@@ -9,7 +9,9 @@ permissions:
 # in the comment. A moved tag can't change what runs here.
 jobs:
   python:
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: since Ubuntu 26.04 setup-python has no Python 3.9 there, and
+    # pyproject.toml still says >=3.9. Move on together with requires-python.
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
