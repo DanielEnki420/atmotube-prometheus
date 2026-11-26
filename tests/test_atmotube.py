@@ -20,6 +20,7 @@ import re
 import stat
 import struct
 import tempfile
+import time
 import types
 import unittest
 
@@ -810,6 +811,123 @@ class GattErrorReason(unittest.TestCase):
         text = atmo.metrics_text(atmo.State(1000.0), 1000.0)
         for r in atmo.GATT_ERROR_REASONS:
             self.assertIn(f'atmotube_gatt_errors_total{{reason="{r}"}} 0\n', text)
+
+
+# ── A hung BlueZ / D-Bus call must never freeze the exporter ─────────────────
+# Seen on a Pi 5 (6 hangs in 2 weeks, Nov 2026): the round never came back, the
+# heartbeat went stale, and SIGTERM did nothing - it only sets a flag that the
+# frozen loop never reads - so systemd had to wait 90 s and SIGKILL. asyncio's
+# wait_for does not help: after the timeout it WAITS for the cancelled call to
+# finish unwinding, and a call stuck on a dead D-Bus connection never does.
+class Exited(BaseException):
+    """Stands in for os._exit in tests."""
+
+
+def hangs_on_cancel():
+    async def coro():
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            await asyncio.sleep(3600)       # cancel is "handled" by hanging again
+    return coro()
+
+
+class HangGuardTests(unittest.TestCase):
+    def setUp(self):
+        names = ("_EXIT", "HANG_GRACE", "LISTEN", "LISTEN_GRACE", "PAUSE", "faulthandler",
+                 "METRICS_FILE", "GATT_AFTER", "GATT_INTERVAL", "NOTIFY_CMD", "_bounded")
+        self._saved = {n: getattr(atmo, n) for n in names}
+        self.tmp = tempfile.TemporaryDirectory()
+        atmo.METRICS_FILE = os.path.join(self.tmp.name, "atmotube.prom")
+        atmo.GATT_AFTER, atmo.GATT_INTERVAL, atmo.NOTIFY_CMD = -1, 0, ""    # a GATT read is due at once
+        self.exit_codes = []
+
+        def fake_exit(code):
+            self.exit_codes.append(code)
+            raise Exited(code)
+        atmo._EXIT = fake_exit
+        atmo.HANG_GRACE = 0.1
+
+    def tearDown(self):
+        for n, v in self._saved.items():
+            setattr(atmo, n, v)
+        self.tmp.cleanup()
+
+    def test_bounded_passes_the_result_through(self):
+        async def f():
+            return 42
+        self.assertEqual(asyncio.run(atmo._bounded(f(), 1, "x")), 42)
+
+    def test_bounded_passes_exceptions_through(self):
+        async def f():
+            raise EOFError("bus closed")
+        with self.assertRaises(EOFError):
+            asyncio.run(atmo._bounded(f(), 1, "x"))
+
+    def test_bounded_slow_call_times_out_like_wait_for(self):
+        async def slow():
+            await asyncio.sleep(3600)
+        with self.assertRaises(TimeoutError) as cm:
+            asyncio.run(atmo._bounded(slow(), 0.05, "GATT read"))
+        self.assertIn("GATT read", str(cm.exception))
+        self.assertEqual(self.exit_codes, [])
+
+    def test_bounded_call_that_ignores_cancel_ends_the_process(self):
+        started = time.monotonic()
+        with self.assertRaises(Exited):
+            asyncio.run(atmo._bounded(hangs_on_cancel(), 0.05, "Bluetooth scan"))
+        self.assertEqual(self.exit_codes, [1])
+        self.assertLess(time.monotonic() - started, 2)      # not 3600 s
+
+    def test_run_with_a_scanner_that_hangs_ends_the_process(self):
+        class Scanner:
+            def __init__(self, detection_callback, bluez=None):
+                pass
+
+            async def __aenter__(self):
+                await hangs_on_cancel()
+
+            async def __aexit__(self, *a):
+                return False
+        atmo.LISTEN, atmo.LISTEN_GRACE, atmo.PAUSE = 0.01, 0.05, 0
+        with self.assertRaises(Exited):
+            asyncio.run(atmo.run(Scanner, stub_client({}), rounds=1))
+        self.assertEqual(self.exit_codes, [1])
+
+    def test_run_with_a_gatt_connect_that_hangs_ends_the_process(self):
+        class Client:
+            def __init__(self, target, timeout=None):
+                pass
+
+            async def __aenter__(self):
+                await hangs_on_cancel()
+
+            async def __aexit__(self, *a):
+                return False
+        atmo.LISTEN, atmo.PAUSE = 0.01, 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        real = atmo._bounded
+
+        async def short(coro, seconds, what):          # bound the GATT read at 0.05 s, not 45 s
+            return await real(coro, 0.05 if what == "GATT read" else seconds, what)
+        atmo._bounded = short
+        with self.assertRaises(Exited):
+            asyncio.run(atmo.run(scanner, Client, rounds=1))
+        self.assertEqual(self.exit_codes, [1])
+
+    def test_hard_deadline_is_armed_every_round_and_disarmed_at_the_end(self):
+        calls = []
+        atmo.faulthandler = types.SimpleNamespace(
+            dump_traceback_later=lambda s, **kw: calls.append(("arm", s, kw.get("exit"))),
+            cancel_dump_traceback_later=lambda: calls.append(("cancel",)))
+        atmo.PAUSE = 0
+        scanner = stub_scanner([("AA:BB:CC:DD:EE:FF", "ATMOTUBE", PM_1)])
+        atmo.LISTEN = 0.01
+        asyncio.run(atmo.run(scanner, stub_client({}), rounds=3))
+        arms = [c for c in calls if c[0] == "arm"]
+        self.assertGreaterEqual(len(arms), 4)               # at the start + once per round
+        self.assertTrue(all(c[1] == atmo.HARD_DEADLINE and c[2] is True for c in arms))
+        self.assertEqual(calls[-1], ("cancel",))            # a finished run leaves no timer behind
 
 
 if __name__ == "__main__":

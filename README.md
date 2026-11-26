@@ -267,6 +267,22 @@ every one with its default. The ones you're most likely to touch:
 | `ATMOTUBE_QUIET_HOURS` | `22-7` | Empty = none |
 | `ATMOTUBE_GATT` | `auto` | `never` = listen only |
 | `ATMOTUBE_PM25_HIGH` / `_OK` | `25` / `15` | Likewise `VOC`, `HUMIDITY`, `BATTERY_LOW`/`_OK` |
+| `ATMOTUBE_HARD_DEADLINE_SECONDS` | `300` | If one round does not finish in this time, the exporter logs every thread's stack and exits (systemd restarts it). `0` = off |
+| `ATMOTUBE_HANG_GRACE_SECONDS` | `20` | How long a Bluetooth call that timed out may take to unwind before the exporter exits |
+| `ATMOTUBE_LISTEN_GRACE_SECONDS` | `45` | Extra time for starting/stopping the scan, on top of `ATMOTUBE_LISTEN_SECONDS` |
+
+### If the exporter freezes (0.1.5)
+
+On a Pi 5 a BlueZ/D-Bus call sometimes never returned (about every 2 days).
+Older versions then stopped for good: no more rounds, a stale
+`atmotube_last_run_timestamp_seconds`, and `systemctl stop` waited 90 s because
+SIGTERM only sets a flag that a frozen loop never reads. Since 0.1.5 every
+Bluetooth call has a time limit, a call that ignores being cancelled ends the
+process, and a hard deadline per round is the last resort. systemd restarts
+the exporter after `RestartSec` (30 s). The log then shows a line such as
+`Bluetooth scan hung and ignored being cancelled` or, for the hard deadline,
+`Timeout (0:05:00)!` followed by every thread's stack - please attach that to
+a bug report; it shows where the call was stuck.
 
 ## Tests
 

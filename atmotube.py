@@ -43,6 +43,7 @@ Configuration: ATMOTUBE_* environment variables, see atmotube.env.example.
 """
 
 import asyncio
+import faulthandler
 import logging
 import os
 import shlex
@@ -53,7 +54,7 @@ import sys
 import tempfile
 import time
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,6 +102,16 @@ GATT_MODE = os.environ.get("ATMOTUBE_GATT", "auto").strip().lower()
 
 LISTEN = _number("ATMOTUBE_LISTEN_SECONDS", 20)    # seconds of listening per round ...
 PAUSE = _number("ATMOTUBE_PAUSE_SECONDS", 10)      # ... then a pause: one round = 30 s
+# Hang guards (0.1.5). A BlueZ/D-Bus call that never returns used to freeze the
+# exporter for good: no more rounds, a stale heartbeat, and SIGTERM did nothing
+# (it only sets a flag the frozen loop never reads). Now:
+#  - every Bluetooth call has a time limit, and a call that does not even react
+#    to being cancelled within HANG_GRACE ends the process - systemd restarts it;
+#  - HARD_DEADLINE is the last resort: if a whole round does not finish, the
+#    process dumps every thread's stack to the log and exits. 0 = off.
+LISTEN_GRACE = _number("ATMOTUBE_LISTEN_GRACE_SECONDS", 45)   # scan start/stop on top of LISTEN
+HANG_GRACE = _number("ATMOTUBE_HANG_GRACE_SECONDS", 20)       # a cancelled call may take this long
+HARD_DEADLINE = _number("ATMOTUBE_HARD_DEADLINE_SECONDS", 300)
 # The scanner is restarted after every round. That costs nothing and avoids
 # the known BlueZ case of a long discovery silently going to sleep.
 MAX_AGE_BASE = _number("ATMOTUBE_MAX_AGE", 600)    # s, after that a value counts as unknown
@@ -788,6 +799,42 @@ def bt_error_text(e):
     return raw
 
 
+_EXIT = os._exit        # tests swap this out
+
+
+def _hung(what):
+    log.error("%s hung and ignored being cancelled - exiting so that systemd restarts "
+              "the exporter", what)
+    _EXIT(1)
+
+
+async def _bounded(coro, seconds, what):
+    """asyncio.wait_for with a way out. wait_for WAITS for the cancelled call to
+    finish unwinding - and a call stuck on a dead D-Bus connection never does,
+    so the timeout itself would hang. Here the cancelled call gets HANG_GRACE
+    seconds; after that the process ends. A call that merely times out raises
+    TimeoutError, exactly like wait_for."""
+    task = asyncio.ensure_future(coro)
+    try:
+        done, _ = await asyncio.wait({task}, timeout=seconds)
+        if not done:
+            task.cancel()
+            done, _ = await asyncio.wait({task}, timeout=HANG_GRACE)
+            if not done:
+                _hung(what)
+            if task.cancelled():
+                raise TimeoutError(f"{what} timed out after {seconds:g} s")
+        return task.result()
+    except asyncio.CancelledError:      # we were cancelled ourselves: take the call down too
+        task.cancel()
+        raise
+
+
+def _arm_deadline():
+    if HARD_DEADLINE > 0:
+        faulthandler.dump_traceback_later(HARD_DEADLINE, exit=True)
+
+
 async def _wait(stop, seconds):
     try:
         await asyncio.wait_for(stop.wait(), timeout=max(seconds, 0))
@@ -857,9 +904,11 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
         log.warning("ATMOTUBE_MAC is not set - listening to the first Atmotube heard, which "
                     "could be a neighbour's. Run --diagnose and pin your device's address.")
     n = 0
+    _arm_deadline()
     while not stop.is_set():
         try:
-            await listen(s, LISTEN, stop, scanner_cls)
+            await _bounded(listen(s, LISTEN, stop, scanner_cls), LISTEN + LISTEN_GRACE,
+                           "Bluetooth scan")
             if not s.bluetooth_up:
                 log.info("Bluetooth scanner running")
             s.bluetooth_up, s.bt_error = True, None
@@ -876,7 +925,8 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
             started = time.monotonic()
             error, progress = None, {}
             try:
-                raw = await asyncio.wait_for(read_gatt(s.device or s.address, client_cls, progress), 45)
+                raw = await _bounded(read_gatt(s.device or s.address, client_cls, progress), 45,
+                                     "GATT read")
                 ok = apply_gatt(s, raw, time.time())
             except Exception as e:
                 error, ok = e, False
@@ -911,10 +961,12 @@ async def run(scanner_cls=None, client_cls=None, rounds=None):
         now = time.time()
         process_alerts(s, alerts, now)
         write_metrics(metrics_text(s, now, alerts))
+        _arm_deadline()                 # the round got through: restart the clock
         n += 1
         if rounds and n >= rounds:
             break
         await _wait(stop, PAUSE)
+    faulthandler.cancel_dump_traceback_later()
     log.info("Stopped")
 
 
